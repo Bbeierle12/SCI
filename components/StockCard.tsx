@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
-import { ArrowUpRight, ArrowDownRight, Cpu, AlertTriangle, BarChart3, Box, Zap, CheckCircle2, Circle, ShieldCheck, AlertOctagon, Bell } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Cpu, AlertTriangle, BarChart3, Box, Zap, CheckCircle2, Circle, ShieldCheck, AlertOctagon, Bell, BrainCircuit, X } from 'lucide-react';
 import { Stock } from '../types';
-import { getQuickSummary } from '../services/geminiService';
+import { getQuickSummary, analyzeStrategicRisk } from '../services/geminiService';
 
 interface StockCardProps {
   stock: Stock;
@@ -26,6 +26,9 @@ export const StockCard: React.FC<StockCardProps> = ({
   const [quickInfo, setQuickInfo] = useState<string | null>(null);
   const [loadingQuick, setLoadingQuick] = useState(false);
 
+  const [riskAnalysis, setRiskAnalysis] = useState<string | null>(null);
+  const [loadingRisk, setLoadingRisk] = useState(false);
+
   const handleQuickInfo = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (quickInfo) return;
@@ -33,6 +36,14 @@ export const StockCard: React.FC<StockCardProps> = ({
     const info = await getQuickSummary(stock.name, stock.role);
     setQuickInfo(info);
     setLoadingQuick(false);
+  };
+
+  const handleRiskAnalysis = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoadingRisk(true);
+    const analysis = await analyzeStrategicRisk(stock.name);
+    setRiskAnalysis(analysis);
+    setLoadingRisk(false);
   };
 
   const getRiskConfig = (risk: string) => {
@@ -126,27 +137,35 @@ export const StockCard: React.FC<StockCardProps> = ({
           </span>
         </div>
 
-        {/* Quick AI Info Area */}
+        {/* AI Actions & Info */}
         <div className="min-h-[2.5rem] mb-2 z-10 relative">
-             {quickInfo ? (
+             {/* Buttons Row */}
+             <div className="flex gap-2 mb-2 min-h-[24px]">
+                 {!quickInfo && (
+                    <button 
+                        onClick={handleQuickInfo}
+                        disabled={loadingQuick}
+                        className="text-xs text-gray-500 hover:text-blue-400 flex items-center gap-1.5 transition-all hover:bg-gray-800 px-2 py-1 rounded-md -ml-2"
+                    >
+                        {loadingQuick ? <span className="animate-pulse">Thinking...</span> : <><Zap className="w-3 h-3" /> Insight</>}
+                    </button>
+                 )}
+                 
+                 <button 
+                    onClick={handleRiskAnalysis}
+                    disabled={loadingRisk}
+                    className={`text-xs text-gray-500 hover:text-purple-400 flex items-center gap-1.5 transition-all hover:bg-gray-800 px-2 py-1 rounded-md ${quickInfo ? '-ml-2' : ''}`}
+                 >
+                    {loadingRisk ? <span className="animate-pulse">Reasoning...</span> : <><BrainCircuit className="w-3 h-3" /> Risk Check</>}
+                 </button>
+             </div>
+
+             {/* Quick Info Result */}
+             {quickInfo && (
                  <div className="text-xs text-blue-200 bg-blue-900/20 p-2 rounded border border-blue-800/30 animate-in fade-in">
                     <Zap className="w-3 h-3 inline mr-1 text-yellow-400 fill-yellow-400" />
                     {quickInfo}
                  </div>
-             ) : (
-                 <button 
-                    onClick={handleQuickInfo}
-                    disabled={loadingQuick}
-                    className="text-xs text-gray-500 hover:text-blue-400 flex items-center gap-1.5 transition-all hover:bg-gray-800 px-2 py-1 rounded-md -ml-2"
-                 >
-                    {loadingQuick ? (
-                        <span className="animate-pulse">Thinking...</span>
-                    ) : (
-                        <>
-                            <Zap className="w-3 h-3" /> AI Insight
-                        </>
-                    )}
-                 </button>
              )}
         </div>
       </div>
@@ -157,6 +176,26 @@ export const StockCard: React.FC<StockCardProps> = ({
           <span className="text-xs font-semibold text-blue-100">{stock.role}</span>
         </div>
       </div>
+
+      {/* Risk Analysis Overlay */}
+      {riskAnalysis && (
+        <div className="absolute inset-0 bg-gray-950/95 backdrop-blur-sm z-30 p-4 overflow-y-auto animate-in fade-in cursor-default" onClick={(e) => e.stopPropagation()}>
+             <div className="flex justify-between items-start mb-3 sticky top-0 bg-gray-950/95 pb-2 border-b border-gray-800">
+                <h4 className="text-sm font-bold text-purple-400 flex items-center gap-2">
+                    <BrainCircuit className="w-4 h-4" /> Strategic Risk
+                </h4>
+                <button 
+                    onClick={() => setRiskAnalysis(null)}
+                    className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800"
+                >
+                    <X className="w-4 h-4" />
+                </button>
+            </div>
+            <div className="prose prose-invert prose-sm text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">
+                {riskAnalysis}
+            </div>
+        </div>
+      )}
     </div>
   );
 };
