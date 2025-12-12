@@ -1,9 +1,9 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Search, 
-  Globe, 
-  Cpu, 
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import {
+  Search,
+  Globe,
+  Cpu,
   AlertTriangle,
   Zap,
   Flag,
@@ -17,7 +17,10 @@ import {
   Loader2,
   Sparkles,
   Bell,
-  ChevronDown
+  ChevronDown,
+  RefreshCw,
+  Pause,
+  Play
 } from 'lucide-react';
 import { Stock, AlertConfig, AppNotification } from './types';
 import { STOCK_DATA, PRIVATE_DATA } from './constants';
@@ -33,6 +36,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { AlertsPanel } from './components/AlertsPanel';
 import { AlertSetupModal } from './components/AlertSetupModal';
 import { generateStockData } from './services/claudeService';
+import { useFinnhubRefresh } from './hooks/useFinnhubRefresh';
 
 export default function App() {
   // Data State
@@ -61,6 +65,39 @@ export default function App() {
   
   // Toast State
   const [toast, setToast] = useState<{message: string, type: 'error' | 'success' | 'info'} | null>(null);
+
+  // Finnhub refresh callback
+  const handleFinnhubUpdate = useCallback((updates: Map<string, Partial<Stock>>) => {
+    setAllStocks(prev => prev.map(stock => {
+      const update = updates.get(stock.ticker);
+      if (update) {
+        return {
+          ...stock,
+          price: update.price ?? stock.price,
+          change: update.change ?? stock.change
+        };
+      }
+      return stock;
+    }));
+  }, []);
+
+  // Finnhub real-time refresh hook
+  const {
+    state: finnhubState,
+    refresh: manualRefresh,
+    toggleAutoRefresh
+  } = useFinnhubRefresh({
+    stocks: allStocks,
+    autoRefreshInterval: 60000, // 60 seconds
+    enabled: true,
+    onUpdate: handleFinnhubUpdate,
+    onError: (error) => {
+      // Only show error toast if it's not the API key warning (that's expected on first load)
+      if (!error.includes('not configured')) {
+        showToast(error, 'error');
+      }
+    }
+  });
 
   // --- Helper Functions ---
 
@@ -257,12 +294,48 @@ export default function App() {
                   )}
                 </button>
 
-                <div className="flex items-center gap-3 bg-gray-900 px-5 py-2.5 rounded-full border border-gray-800 shadow-lg">
-                  <div className="relative">
-                    <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                    <div className="absolute inset-0 bg-emerald-500 rounded-full animate-ping opacity-20"></div>
+                {/* Refresh Controls */}
+                <div className="flex items-center gap-2 bg-gray-900 px-3 py-2 rounded-full border border-gray-800 shadow-lg">
+                  <button
+                    onClick={() => manualRefresh()}
+                    disabled={finnhubState.isRefreshing}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-blue-400 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    title="Refresh Now"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${finnhubState.isRefreshing ? 'animate-spin' : ''}`} />
+                  </button>
+
+                  <button
+                    onClick={toggleAutoRefresh}
+                    className={`p-1.5 rounded-lg transition-all ${
+                      finnhubState.autoRefreshEnabled
+                        ? 'text-emerald-400 hover:bg-emerald-900/30'
+                        : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+                    }`}
+                    title={finnhubState.autoRefreshEnabled ? 'Pause Auto-Refresh' : 'Resume Auto-Refresh'}
+                  >
+                    {finnhubState.autoRefreshEnabled ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                  </button>
+
+                  <div className="h-4 w-px bg-gray-700"></div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <div className={`w-2 h-2 rounded-full ${finnhubState.autoRefreshEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-gray-600'}`}></div>
+                      {finnhubState.autoRefreshEnabled && (
+                        <div className="absolute inset-0 bg-emerald-500 rounded-full animate-ping opacity-20"></div>
+                      )}
+                    </div>
+                    <span className="text-xs font-medium text-gray-400">
+                      {finnhubState.isRefreshing ? (
+                        'Updating...'
+                      ) : finnhubState.lastRefresh ? (
+                        `Updated ${finnhubState.lastRefresh.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                      ) : (
+                        'Live Data'
+                      )}
+                    </span>
                   </div>
-                  <span className="text-sm font-semibold text-gray-300">Live Data • {new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
                 </div>
               </div>
             </div>

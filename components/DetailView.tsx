@@ -1,13 +1,14 @@
 
-import React, { useState } from 'react';
-import { 
-    TrendingUp, TrendingDown, Cpu, BarChart3, 
+import React, { useState, useEffect } from 'react';
+import {
+    TrendingUp, TrendingDown, Cpu, BarChart3,
     BrainCircuit, Globe, FileText, Loader2, ExternalLink,
     AlertTriangle, ShieldCheck, AlertOctagon, RefreshCw,
-    Activity, Gauge, ArrowRight, Layers, Bell
+    Activity, Gauge, Bell, DollarSign, Calendar
 } from 'lucide-react';
-import { Stock, SearchResult, IntelligenceMetrics } from '../types';
+import { Stock, SearchResult, IntelligenceMetrics, FinnhubQuote, FinnhubProfile, FinnhubNewsItem, FinnhubMetrics } from '../types';
 import { analyzeStrategicRisk, getRecentSupplyChainNews, getStockIntelligence } from '../services/claudeService';
+import { getQuote, getProfile, getNews as getFinnhubNews, getMetrics as getFinnhubMetrics, formatMarketCap, formatNewsDate } from '../services/finnhubService';
 
 interface DetailViewProps {
   stock: Stock;
@@ -17,7 +18,7 @@ interface DetailViewProps {
 
 export const DetailView: React.FC<DetailViewProps> = ({ stock, onClose, onSetAlert }) => {
   const isPositive = stock.change >= 0;
-  const [activeTab, setActiveTab] = useState<'overview' | 'analysis' | 'intelligence' | 'news'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analysis' | 'intelligence' | 'financials' | 'news'>('overview');
   
   // AI States
   const [analysis, setAnalysis] = useState<string | null>(null);
@@ -28,6 +29,50 @@ export const DetailView: React.FC<DetailViewProps> = ({ stock, onClose, onSetAle
 
   const [metrics, setMetrics] = useState<IntelligenceMetrics | null>(null);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
+
+  // Finnhub Live Data States
+  const [liveQuote, setLiveQuote] = useState<FinnhubQuote | null>(null);
+  const [profile, setProfile] = useState<FinnhubProfile | null>(null);
+  const [finnhubNews, setFinnhubNews] = useState<FinnhubNewsItem[]>([]);
+  const [financials, setFinancials] = useState<FinnhubMetrics | null>(null);
+  const [isLoadingLive, setIsLoadingLive] = useState(true);
+  const [isLoadingFinnhubNews, setIsLoadingFinnhubNews] = useState(false);
+  const [isLoadingFinancials, setIsLoadingFinancials] = useState(false);
+
+  // Fetch live data on mount
+  useEffect(() => {
+    const fetchLiveData = async () => {
+      setIsLoadingLive(true);
+      try {
+        const [quoteData, profileData] = await Promise.all([
+          getQuote(stock.ticker),
+          getProfile(stock.ticker)
+        ]);
+        setLiveQuote(quoteData);
+        setProfile(profileData);
+      } catch (e) {
+        console.error('Failed to fetch live data:', e);
+      }
+      setIsLoadingLive(false);
+    };
+    fetchLiveData();
+  }, [stock.ticker]);
+
+  const handleFetchFinnhubNews = async (force = false) => {
+    if (finnhubNews.length > 0 && !force) return;
+    setIsLoadingFinnhubNews(true);
+    const news = await getFinnhubNews(stock.ticker, 14); // Last 2 weeks
+    setFinnhubNews(news);
+    setIsLoadingFinnhubNews(false);
+  };
+
+  const handleFetchFinancials = async (force = false) => {
+    if (financials && !force) return;
+    setIsLoadingFinancials(true);
+    const data = await getFinnhubMetrics(stock.ticker);
+    setFinancials(data);
+    setIsLoadingFinancials(false);
+  };
 
   const handleDeepAnalysis = async () => {
     if (analysis) return;
@@ -153,17 +198,23 @@ export const DetailView: React.FC<DetailViewProps> = ({ stock, onClose, onSetAle
             >
                 <BrainCircuit className="w-4 h-4" /> Analysis
             </button>
-            <button 
+            <button
                 onClick={() => { setActiveTab('intelligence'); handleFetchMetrics(); }}
-                className={`flex-1 min-w-[140px] py-3 text-sm font-medium transition-colors border-b-2 flex items-center justify-center gap-2 ${activeTab === 'intelligence' ? 'border-amber-500 text-amber-400' : 'border-transparent text-gray-400 hover:text-white'}`}
+                className={`flex-1 min-w-[120px] py-3 text-sm font-medium transition-colors border-b-2 flex items-center justify-center gap-2 ${activeTab === 'intelligence' ? 'border-amber-500 text-amber-400' : 'border-transparent text-gray-400 hover:text-white'}`}
             >
-                <Activity className="w-4 h-4" /> Live Intelligence
+                <Activity className="w-4 h-4" /> Intelligence
             </button>
-            <button 
-                onClick={() => { setActiveTab('news'); handleFetchNews(); }}
+            <button
+                onClick={() => { setActiveTab('financials'); handleFetchFinancials(); }}
+                className={`flex-1 min-w-[100px] py-3 text-sm font-medium transition-colors border-b-2 flex items-center justify-center gap-2 ${activeTab === 'financials' ? 'border-cyan-500 text-cyan-400' : 'border-transparent text-gray-400 hover:text-white'}`}
+            >
+                <DollarSign className="w-4 h-4" /> Financials
+            </button>
+            <button
+                onClick={() => { setActiveTab('news'); handleFetchFinnhubNews(); }}
                 className={`flex-1 min-w-[100px] py-3 text-sm font-medium transition-colors border-b-2 flex items-center justify-center gap-2 ${activeTab === 'news' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-400 hover:text-white'}`}
             >
-                <Globe className="w-4 h-4" /> Live News
+                <Globe className="w-4 h-4" /> News
             </button>
         </div>
 
@@ -173,7 +224,48 @@ export const DetailView: React.FC<DetailViewProps> = ({ stock, onClose, onSetAle
             {/* TAB: OVERVIEW */}
             {activeTab === 'overview' && (
                 <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-300">
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* Live Quote from Finnhub */}
+                    {liveQuote && (
+                      <div className="bg-gradient-to-r from-emerald-900/20 to-blue-900/20 border border-emerald-500/30 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Activity className="w-4 h-4 text-emerald-400" />
+                          <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Live Market Data (Finnhub)</span>
+                          {isLoadingLive && <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />}
+                        </div>
+                        <div className="grid grid-cols-4 gap-4">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Current</p>
+                            <p className="text-2xl font-mono font-bold text-white">${liveQuote.c.toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Change</p>
+                            <p className={`text-lg font-bold ${liveQuote.dp >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {liveQuote.dp >= 0 ? '+' : ''}{liveQuote.dp.toFixed(2)}%
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Day High</p>
+                            <p className="text-sm font-mono text-gray-300">${liveQuote.h.toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Day Low</p>
+                            <p className="text-sm font-mono text-gray-300">${liveQuote.l.toFixed(2)}</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-gray-700/50 grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs text-gray-500">Open: <span className="text-gray-300 font-mono">${liveQuote.o.toFixed(2)}</span></p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500">Prev Close: <span className="text-gray-300 font-mono">${liveQuote.pc.toFixed(2)}</span></p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fallback to static data if no live quote */}
+                    {!liveQuote && (
+                      <div className="grid grid-cols-2 gap-4">
                         <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
                             <p className="text-sm text-gray-400 mb-1">Current Price</p>
                             <div className="text-4xl font-mono font-light text-white">
@@ -186,7 +278,8 @@ export const DetailView: React.FC<DetailViewProps> = ({ stock, onClose, onSetAle
                                 <span className="font-bold text-lg">{stock.change > 0 ? '+' : ''}{stock.change}%</span>
                             </div>
                         </div>
-                    </div>
+                      </div>
+                    )}
 
                     <div>
                         <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -348,85 +441,215 @@ export const DetailView: React.FC<DetailViewProps> = ({ stock, onClose, onSetAle
                  </div>
              )}
 
-            {/* TAB: NEWS (Search Grounding) */}
+            {/* TAB: FINANCIALS (Finnhub) */}
+            {activeTab === 'financials' && (
+                <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-300">
+                    <div className="flex justify-between items-center mb-2">
+                        <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                            <DollarSign className="w-4 h-4" /> Financial Metrics
+                        </h3>
+                        <button
+                            onClick={() => handleFetchFinancials(true)}
+                            disabled={isLoadingFinancials}
+                            className={`p-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded-lg transition-colors ${isLoadingFinancials ? 'opacity-50' : ''}`}
+                        >
+                            <RefreshCw className={`w-4 h-4 ${isLoadingFinancials ? 'animate-spin' : ''}`} />
+                        </button>
+                    </div>
+
+                    {isLoadingFinancials ? (
+                        <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                            <Loader2 className="w-10 h-10 animate-spin mb-4 text-cyan-500/50" />
+                            <p>Loading financial data from Finnhub...</p>
+                        </div>
+                    ) : financials?.metric ? (
+                        <div className="space-y-4">
+                            {/* Key Metrics Grid */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
+                                    <p className="text-xs text-gray-500 mb-1">P/E Ratio</p>
+                                    <p className="text-2xl font-mono font-bold text-white">
+                                        {financials.metric.peNormalizedAnnual?.toFixed(2) ?? 'N/A'}
+                                    </p>
+                                </div>
+                                <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
+                                    <p className="text-xs text-gray-500 mb-1">EPS (Annual)</p>
+                                    <p className="text-2xl font-mono font-bold text-white">
+                                        ${financials.metric.epsNormalizedAnnual?.toFixed(2) ?? 'N/A'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* 52 Week Range */}
+                            <div className="bg-gray-800/30 p-5 rounded-xl border border-gray-800">
+                                <div className="flex justify-between items-center mb-3">
+                                    <span className="text-sm font-medium text-gray-300">52 Week Range</span>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <span className="text-sm font-mono text-rose-400">
+                                        ${financials.metric['52WeekLow']?.toFixed(2) ?? '?'}
+                                    </span>
+                                    <div className="flex-1 bg-gray-900 rounded-full h-2 relative">
+                                        {liveQuote && financials.metric['52WeekLow'] && financials.metric['52WeekHigh'] && (
+                                            <div
+                                                className="absolute w-3 h-3 bg-cyan-400 rounded-full -top-0.5 shadow-lg shadow-cyan-400/50"
+                                                style={{
+                                                    left: `${Math.min(100, Math.max(0, ((liveQuote.c - financials.metric['52WeekLow']) / (financials.metric['52WeekHigh'] - financials.metric['52WeekLow'])) * 100))}%`
+                                                }}
+                                            />
+                                        )}
+                                    </div>
+                                    <span className="text-sm font-mono text-emerald-400">
+                                        ${financials.metric['52WeekHigh']?.toFixed(2) ?? '?'}
+                                    </span>
+                                </div>
+                                {liveQuote && (
+                                    <p className="text-xs text-gray-500 mt-2 text-center">
+                                        Current: <span className="text-cyan-400 font-mono">${liveQuote.c.toFixed(2)}</span>
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Additional Metrics */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl">
+                                    <p className="text-xs text-gray-500 mb-1">Market Cap</p>
+                                    <p className="text-lg font-mono text-white">
+                                        {financials.metric.marketCapitalization
+                                            ? formatMarketCap(financials.metric.marketCapitalization)
+                                            : profile?.marketCapitalization
+                                                ? formatMarketCap(profile.marketCapitalization)
+                                                : stock.marketCap}
+                                    </p>
+                                </div>
+                                <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl">
+                                    <p className="text-xs text-gray-500 mb-1">Dividend Yield</p>
+                                    <p className="text-lg font-mono text-white">
+                                        {financials.metric.dividendYieldIndicatedAnnual
+                                            ? `${financials.metric.dividendYieldIndicatedAnnual.toFixed(2)}%`
+                                            : 'N/A'}
+                                    </p>
+                                </div>
+                                <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl">
+                                    <p className="text-xs text-gray-500 mb-1">Beta</p>
+                                    <p className="text-lg font-mono text-white">
+                                        {financials.metric.beta?.toFixed(2) ?? 'N/A'}
+                                    </p>
+                                </div>
+                                <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl">
+                                    <p className="text-xs text-gray-500 mb-1">Revenue Growth (YoY)</p>
+                                    <p className={`text-lg font-mono ${(financials.metric.revenueGrowthQuarterlyYoy ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                        {financials.metric.revenueGrowthQuarterlyYoy
+                                            ? `${financials.metric.revenueGrowthQuarterlyYoy.toFixed(1)}%`
+                                            : 'N/A'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Company Profile */}
+                            {profile && (
+                                <div className="bg-gray-800/30 p-4 rounded-xl border border-gray-800">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        {profile.logo && (
+                                            <img src={profile.logo} alt={profile.name} className="w-8 h-8 rounded-lg bg-white p-1" />
+                                        )}
+                                        <div>
+                                            <p className="text-sm font-medium text-white">{profile.name}</p>
+                                            <p className="text-xs text-gray-500">{profile.finnhubIndustry} • {profile.exchange}</p>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                        <div className="text-gray-500">Country: <span className="text-gray-300">{profile.country}</span></div>
+                                        <div className="text-gray-500">IPO: <span className="text-gray-300">{profile.ipo || 'N/A'}</span></div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="text-center py-12 bg-gray-800/30 rounded-xl border border-dashed border-gray-800">
+                            <DollarSign className="w-12 h-12 text-gray-600 mb-3 mx-auto opacity-50" />
+                            <p className="text-gray-500">Unable to load financial data.</p>
+                            <p className="text-xs text-gray-600 mt-1">Check Finnhub API key configuration.</p>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* TAB: NEWS (Finnhub) */}
             {activeTab === 'news' && (
                 <div className="space-y-4 animate-in slide-in-from-bottom-4 fade-in duration-300 h-full flex flex-col">
                     <div className="bg-emerald-900/10 border border-emerald-500/20 rounded-xl p-4 mb-2 flex justify-between items-start shrink-0">
                         <div>
                             <div className="flex items-center gap-2 text-emerald-300 mb-1">
                                 <Globe className="w-4 h-4" />
-                                <h3 className="font-semibold text-sm">Live News Feed</h3>
+                                <h3 className="font-semibold text-sm">Company News</h3>
                             </div>
                             <p className="text-xs text-emerald-200/60">
-                                Real-time ground truth via Google Search.
+                                Real-time news from Finnhub API
                             </p>
                         </div>
-                        <button 
-                            onClick={() => handleFetchNews(true)}
-                            disabled={isLoadingNews}
-                            className={`p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg transition-colors hover:text-white ${isLoadingNews ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        <button
+                            onClick={() => handleFetchFinnhubNews(true)}
+                            disabled={isLoadingFinnhubNews}
+                            className={`p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg transition-colors hover:text-white ${isLoadingFinnhubNews ? 'opacity-50 cursor-not-allowed' : ''}`}
                             title="Refresh News"
                         >
-                            <RefreshCw className={`w-4 h-4 ${isLoadingNews ? 'animate-spin' : ''}`} />
+                            <RefreshCw className={`w-4 h-4 ${isLoadingFinnhubNews ? 'animate-spin' : ''}`} />
                         </button>
                     </div>
 
-                    {isLoadingNews ? (
+                    {isLoadingFinnhubNews ? (
                          <div className="flex-1 flex flex-col items-center justify-center text-gray-500 min-h-[200px]">
                              <Loader2 className="w-8 h-8 animate-spin mb-3 text-emerald-500/50" />
-                             <p className="text-sm">Scanning global news feeds...</p>
+                             <p className="text-sm">Fetching latest news...</p>
                          </div>
-                    ) : (
-                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                            {/* Summary Text */}
-                            <div className="prose prose-invert prose-sm max-w-none text-gray-300 whitespace-pre-wrap mb-6 leading-relaxed">
-                                {newsData?.text}
-                            </div>
-                            
-                            {/* Sources List */}
-                            {newsData?.sources && newsData.sources.length > 0 && (
-                                <div>
-                                    <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Verified Sources</h4>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        {newsData.sources.map((source, idx) => (
-                                            <a 
-                                                key={idx}
-                                                href={source.uri} 
-                                                target="_blank" 
-                                                rel="noopener noreferrer"
-                                                className="flex items-start gap-3 p-3 bg-gray-800/40 rounded-lg hover:bg-gray-800 border border-gray-700/50 hover:border-emerald-500/40 transition-all group"
-                                            >
-                                                <div className="mt-0.5 bg-gray-900 p-1.5 rounded-md text-gray-500 group-hover:text-emerald-400 transition-colors border border-gray-800 shrink-0">
-                                                    <img 
-                                                        src={`https://www.google.com/s2/favicons?domain=${getHostname(source.uri)}&sz=32`}
-                                                        alt="icon"
-                                                        className="w-4 h-4 rounded-sm opacity-60 group-hover:opacity-100 transition-opacity"
-                                                        onError={(e) => {
-                                                            (e.target as HTMLImageElement).style.display = 'none';
-                                                            (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                                                        }}
-                                                    />
-                                                    <FileText className="w-4 h-4 hidden" />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <h5 className="text-sm text-gray-300 group-hover:text-white truncate font-medium mb-0.5">{source.title}</h5>
-                                                    <div className="flex items-center gap-1 text-xs text-gray-500">
-                                                        <ExternalLink className="w-3 h-3" />
-                                                        <span className="truncate">{getHostname(source.uri)}</span>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        ))}
+                    ) : finnhubNews.length > 0 ? (
+                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
+                            {finnhubNews.slice(0, 10).map((article) => (
+                                <a
+                                    key={article.id}
+                                    href={article.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block p-4 bg-gray-800/40 rounded-xl hover:bg-gray-800 border border-gray-700/50 hover:border-emerald-500/40 transition-all group"
+                                >
+                                    <div className="flex gap-4">
+                                        {article.image && (
+                                            <img
+                                                src={article.image}
+                                                alt=""
+                                                className="w-20 h-20 object-cover rounded-lg shrink-0 bg-gray-900"
+                                                onError={(e) => {
+                                                    (e.target as HTMLImageElement).style.display = 'none';
+                                                }}
+                                            />
+                                        )}
+                                        <div className="flex-1 min-w-0">
+                                            <h5 className="text-sm text-gray-200 group-hover:text-white font-medium mb-2 line-clamp-2">
+                                                {article.headline}
+                                            </h5>
+                                            <p className="text-xs text-gray-500 line-clamp-2 mb-2">
+                                                {article.summary}
+                                            </p>
+                                            <div className="flex items-center gap-3 text-xs text-gray-500">
+                                                <span className="flex items-center gap-1">
+                                                    <Calendar className="w-3 h-3" />
+                                                    {formatNewsDate(article.datetime)}
+                                                </span>
+                                                <span className="flex items-center gap-1">
+                                                    <ExternalLink className="w-3 h-3" />
+                                                    {article.source}
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            )}
-                            
-                            {!isLoadingNews && newsData && (!newsData.sources || newsData.sources.length === 0) && (
-                                <div className="text-center py-12 bg-gray-800/30 rounded-xl border border-dashed border-gray-800 flex flex-col items-center justify-center">
-                                    <Globe className="w-12 h-12 text-gray-600 mb-3 opacity-50" />
-                                    <p className="text-sm text-gray-400">Analysis complete, but no specific web sources were cited.</p>
-                                </div>
-                            )}
+                                </a>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-12 bg-gray-800/30 rounded-xl border border-dashed border-gray-800 flex flex-col items-center justify-center">
+                            <Globe className="w-12 h-12 text-gray-600 mb-3 opacity-50" />
+                            <p className="text-sm text-gray-400">No recent news found for {stock.ticker}</p>
                         </div>
                     )}
                 </div>

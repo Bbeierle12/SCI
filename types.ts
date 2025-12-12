@@ -66,3 +66,70 @@ export interface AppNotification {
   read: boolean;
   type: 'alert' | 'info' | 'success';
 }
+
+// ===== FINNHUB API TYPES =====
+
+export interface FinnhubQuote {
+  c: number;   // Current price
+  d: number;   // Change (absolute)
+  dp: number;  // Change (percent)
+  h: number;   // Day high
+  l: number;   // Day low
+  o: number;   // Open price
+  pc: number;  // Previous close
+  t: number;   // Timestamp
+}
+
+export interface FinnhubProfile {
+  name: string;
+  ticker: string;
+  logo: string;
+  finnhubIndustry: string;
+  marketCapitalization: number;
+  ipo: string;
+  country: string;
+  weburl: string;
+  exchange: string;
+  currency: string;
+}
+
+export interface FinnhubNewsItem {
+  id: number;
+  category: string;
+  datetime: number;
+  headline: string;
+  image: string;
+  source: string;
+  summary: string;
+  url: string;
+}
+
+export interface FinnhubMetrics {
+  metric: {
+    peNormalizedAnnual?: number;
+    epsNormalizedAnnual?: number;
+    '52WeekHigh'?: number;
+    '52WeekLow'?: number;
+    marketCapitalization?: number;
+    dividendYieldIndicatedAnnual?: number;
+    revenueGrowthQuarterlyYoy?: number;
+    '10DayAverageTradingVolume'?: number;
+    beta?: number;
+  };
+}
+
+export interface FinnhubResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  cached?: boolean;
+  timestamp?: number;
+}
+
+export interface RefreshState {
+  isRefreshing: boolean;
+  lastRefresh: Date | null;
+  autoRefreshEnabled: boolean;
+  intervalMs: number;
+  error: string | null;
+}
