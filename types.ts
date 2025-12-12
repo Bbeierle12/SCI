@@ -133,3 +133,26 @@ export interface RefreshState {
   intervalMs: number;
   error: string | null;
 }
+
+// ===== FINNHUB WEBSOCKET TYPES =====
+
+export interface FinnhubTrade {
+  p: number;  // Price
+  s: string;  // Symbol
+  t: number;  // Timestamp (epoch ms)
+  v: number;  // Volume
+  c?: string[]; // Conditions (optional)
+}
+
+export interface FinnhubWsState {
+  connected: boolean;
+  connecting: boolean;
+  error: string | null;
+  subscribedSymbols: string[];
+}
+
+export interface QuoteTick {
+  t: number;  // epoch ms
+  p: number;  // price
+  v?: number; // volume
+}

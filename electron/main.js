@@ -1,7 +1,9 @@
 const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { spawn, execSync } = require('child_process');
 const https = require('https');
+const WebSocket = require('ws');
 
 // Load environment variables
 require('dotenv').config();
@@ -11,6 +13,39 @@ app.disableHardwareAcceleration();
 
 let mainWindow;
 let claudeAvailable = null;
+
+// ===== CONFIG FILE MANAGEMENT =====
+const CONFIG_FILE = path.join(app.getPath('userData'), 'sci-config.json');
+
+function loadConfig() {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Failed to load config:', e);
+  }
+  return {};
+}
+
+function saveConfig(config) {
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    return true;
+  } catch (e) {
+    console.error('Failed to save config:', e);
+    return false;
+  }
+}
+
+// Get API key from config file first, then fall back to env
+function getFinnhubApiKey() {
+  const config = loadConfig();
+  if (config.finnhubApiKey) {
+    return config.finnhubApiKey;
+  }
+  return process.env.FINNHUB_API_KEY;
+}
 
 // Check if Claude CLI is available
 function checkClaudeAvailable() {
@@ -106,14 +141,19 @@ const CACHE_TTL = 30000; // 30 seconds
 let finnhubApiKey = null;
 let apiCallTimestamps = [];
 const finnhubCache = new Map();
+let finnhubKeyWarningShown = false;
 
-// Initialize API key from environment
+// Initialize API key from config or environment
 function initFinnhubApiKey() {
-  finnhubApiKey = process.env.FINNHUB_API_KEY;
+  finnhubApiKey = getFinnhubApiKey();
   if (!finnhubApiKey || finnhubApiKey === 'your_finnhub_api_key_here') {
-    console.warn('FINNHUB_API_KEY not configured');
+    if (!finnhubKeyWarningShown) {
+      console.warn('FINNHUB_API_KEY not configured');
+      finnhubKeyWarningShown = true;
+    }
     return false;
   }
+  finnhubKeyWarningShown = false; // Reset if key becomes available
   return true;
 }
 
@@ -269,6 +309,211 @@ ipcMain.handle('finnhub:batchQuotes', async (event, tickers) => {
   } catch (error) {
     return { success: false, error: error.message };
   }
+});
+
+// ===== CONFIG IPC HANDLERS =====
+
+ipcMain.handle('config:getFinnhubKey', async () => {
+  const config = loadConfig();
+  // Return masked key for display (show last 4 chars only)
+  const key = config.finnhubApiKey || '';
+  if (key.length > 4) {
+    return { hasKey: true, maskedKey: '••••••••' + key.slice(-4) };
+  }
+  return { hasKey: false, maskedKey: '' };
+});
+
+ipcMain.handle('config:setFinnhubKey', async (event, apiKey) => {
+  try {
+    const config = loadConfig();
+    config.finnhubApiKey = apiKey;
+    const saved = saveConfig(config);
+    if (saved) {
+      // Reset the cached key so it gets re-read
+      finnhubApiKey = null;
+      finnhubCache.clear();
+      return { success: true };
+    }
+    return { success: false, error: 'Failed to save config' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('config:clearFinnhubKey', async () => {
+  try {
+    const config = loadConfig();
+    delete config.finnhubApiKey;
+    saveConfig(config);
+    finnhubApiKey = null;
+    finnhubCache.clear();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// ===== FINNHUB WEBSOCKET INTEGRATION =====
+
+const FINNHUB_WS_URL = 'wss://ws.finnhub.io';
+let finnhubWs = null;
+let wsReconnectTimer = null;
+let wsSubscribedSymbols = new Set();
+let wsConnectionState = 'disconnected'; // 'disconnected' | 'connecting' | 'connected'
+
+function connectFinnhubWebSocket() {
+  if (!initFinnhubApiKey()) {
+    console.warn('Cannot connect WebSocket: Finnhub API key not configured');
+    sendWsStateToRenderer('error', 'API key not configured');
+    return;
+  }
+
+  if (finnhubWs && (finnhubWs.readyState === WebSocket.OPEN || finnhubWs.readyState === WebSocket.CONNECTING)) {
+    return; // Already connected or connecting
+  }
+
+  wsConnectionState = 'connecting';
+  sendWsStateToRenderer('connecting');
+
+  try {
+    finnhubWs = new WebSocket(`${FINNHUB_WS_URL}?token=${finnhubApiKey}`);
+
+    finnhubWs.on('open', () => {
+      console.log('Finnhub WebSocket connected');
+      wsConnectionState = 'connected';
+      sendWsStateToRenderer('connected');
+
+      // Resubscribe to all previously subscribed symbols
+      for (const symbol of wsSubscribedSymbols) {
+        finnhubWs.send(JSON.stringify({ type: 'subscribe', symbol }));
+      }
+    });
+
+    finnhubWs.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        
+        if (msg.type === 'error') {
+          console.error('Finnhub WS error:', msg.msg);
+          sendWsStateToRenderer('error', msg.msg);
+          return;
+        }
+
+        if (msg.type === 'trade' && Array.isArray(msg.data)) {
+          // Forward trade data to renderer
+          sendTradeDataToRenderer(msg.data);
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    });
+
+    finnhubWs.on('error', (error) => {
+      console.error('Finnhub WebSocket error:', error.message);
+      wsConnectionState = 'disconnected';
+      sendWsStateToRenderer('error', error.message);
+    });
+
+    finnhubWs.on('close', () => {
+      console.log('Finnhub WebSocket closed');
+      wsConnectionState = 'disconnected';
+      sendWsStateToRenderer('disconnected');
+      finnhubWs = null;
+
+      // Auto-reconnect after 5 seconds if we have subscribers
+      if (wsSubscribedSymbols.size > 0) {
+        clearTimeout(wsReconnectTimer);
+        wsReconnectTimer = setTimeout(() => {
+          console.log('Attempting WebSocket reconnect...');
+          connectFinnhubWebSocket();
+        }, 5000);
+      }
+    });
+  } catch (error) {
+    console.error('Failed to create WebSocket:', error);
+    wsConnectionState = 'disconnected';
+    sendWsStateToRenderer('error', error.message);
+  }
+}
+
+function disconnectFinnhubWebSocket() {
+  clearTimeout(wsReconnectTimer);
+  wsSubscribedSymbols.clear();
+  
+  if (finnhubWs) {
+    try {
+      finnhubWs.close();
+    } catch (e) {
+      // Ignore
+    }
+    finnhubWs = null;
+  }
+  wsConnectionState = 'disconnected';
+}
+
+function sendWsStateToRenderer(state, error = null) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('finnhub:wsState', { state, error });
+  }
+}
+
+function sendTradeDataToRenderer(trades) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('finnhub:trades', trades);
+  }
+}
+
+// WebSocket IPC Handlers
+ipcMain.handle('finnhub:wsConnect', async () => {
+  connectFinnhubWebSocket();
+  return { success: true };
+});
+
+ipcMain.handle('finnhub:wsDisconnect', async () => {
+  disconnectFinnhubWebSocket();
+  return { success: true };
+});
+
+ipcMain.handle('finnhub:wsSubscribe', async (event, symbols) => {
+  const symbolList = Array.isArray(symbols) ? symbols : [symbols];
+  
+  for (const symbol of symbolList) {
+    const s = symbol.toUpperCase();
+    wsSubscribedSymbols.add(s);
+    
+    if (finnhubWs && finnhubWs.readyState === WebSocket.OPEN) {
+      finnhubWs.send(JSON.stringify({ type: 'subscribe', symbol: s }));
+    }
+  }
+
+  // Connect if not already connected
+  if (!finnhubWs || finnhubWs.readyState !== WebSocket.OPEN) {
+    connectFinnhubWebSocket();
+  }
+
+  return { success: true, subscribed: Array.from(wsSubscribedSymbols) };
+});
+
+ipcMain.handle('finnhub:wsUnsubscribe', async (event, symbols) => {
+  const symbolList = Array.isArray(symbols) ? symbols : [symbols];
+  
+  for (const symbol of symbolList) {
+    const s = symbol.toUpperCase();
+    wsSubscribedSymbols.delete(s);
+    
+    if (finnhubWs && finnhubWs.readyState === WebSocket.OPEN) {
+      finnhubWs.send(JSON.stringify({ type: 'unsubscribe', symbol: s }));
+    }
+  }
+
+  return { success: true, subscribed: Array.from(wsSubscribedSymbols) };
+});
+
+ipcMain.handle('finnhub:wsGetState', async () => {
+  return {
+    state: wsConnectionState,
+    subscribed: Array.from(wsSubscribedSymbols)
+  };
 });
 
 function createWindow() {

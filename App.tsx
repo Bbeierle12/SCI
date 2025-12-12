@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Search,
   Globe,
@@ -20,7 +20,8 @@ import {
   ChevronDown,
   RefreshCw,
   Pause,
-  Play
+  Play,
+  Settings
 } from 'lucide-react';
 import { Stock, AlertConfig, AppNotification } from './types';
 import { STOCK_DATA, PRIVATE_DATA } from './constants';
@@ -37,17 +38,22 @@ import { AlertsPanel } from './components/AlertsPanel';
 import { AlertSetupModal } from './components/AlertSetupModal';
 import { generateStockData } from './services/claudeService';
 import { useFinnhubRefresh } from './hooks/useFinnhubRefresh';
+import { useFinnhubWebSocket } from './hooks/useFinnhubWebSocket';
+import { SettingsModal } from './components/SettingsModal';
 
 export default function App() {
   // Data State
   const [allStocks, setAllStocks] = useState<Stock[]>(STOCK_DATA);
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
+  const allStocksRef = useRef(allStocks);
+  allStocksRef.current = allStocks; // Keep ref in sync
   
   // Alerts & Notifications State
   const [alerts, setAlerts] = useState<AlertConfig[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isAlertsPanelOpen, setIsAlertsPanelOpen] = useState(false);
   const [stockForAlertSetup, setStockForAlertSetup] = useState<Stock | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Filter State
   const [filter, setFilter] = useState("All");
@@ -66,7 +72,7 @@ export default function App() {
   // Toast State
   const [toast, setToast] = useState<{message: string, type: 'error' | 'success' | 'info'} | null>(null);
 
-  // Finnhub refresh callback
+  // Finnhub refresh callback (for REST API polling fallback)
   const handleFinnhubUpdate = useCallback((updates: Map<string, Partial<Stock>>) => {
     setAllStocks(prev => prev.map(stock => {
       const update = updates.get(stock.ticker);
@@ -81,14 +87,48 @@ export default function App() {
     }));
   }, []);
 
-  // Finnhub real-time refresh hook
+  // WebSocket real-time price update callback
+  const handleWebSocketPriceUpdate = useCallback((ticker: string, price: number) => {
+    setAllStocks(prev => prev.map(stock => {
+      if (stock.ticker.toUpperCase() === ticker.toUpperCase()) {
+        // Calculate percent change from current price
+        const prevPrice = stock.price;
+        const change = prevPrice > 0 ? ((price - prevPrice) / prevPrice) * 100 : 0;
+        return {
+          ...stock,
+          price: price,
+          // Keep the daily change from REST snapshot, don't update with tick-to-tick change
+        };
+      }
+      return stock;
+    }));
+  }, []);
+
+  // Finnhub WebSocket hook for real-time streaming
+  const {
+    wsState,
+    latestPrices,
+    ticksBySymbol
+  } = useFinnhubWebSocket({
+    stocks: allStocks,
+    enabled: true,
+    onPriceUpdate: handleWebSocketPriceUpdate,
+    onError: (error) => {
+      // Only show WebSocket errors if they're not about missing API key
+      if (!error.includes('not configured') && !error.includes('API key')) {
+        console.warn('WebSocket error:', error);
+      }
+    }
+  });
+
+  // Finnhub REST polling hook (fallback + initial data)
   const {
     state: finnhubState,
     refresh: manualRefresh,
     toggleAutoRefresh
   } = useFinnhubRefresh({
     stocks: allStocks,
-    autoRefreshInterval: 60000, // 60 seconds
+    autoRefreshInterval: 60000, // 60 seconds - fallback polling
     enabled: true,
     onUpdate: handleFinnhubUpdate,
     onError: (error) => {
@@ -137,7 +177,7 @@ export default function App() {
         return prevAlerts.map(alert => {
             if (!alert.active || alert.triggered) return alert;
 
-            const stock = allStocks.find(s => s.ticker === alert.ticker);
+            const stock = allStocksRef.current.find(s => s.ticker === alert.ticker);
             if (!stock) return alert;
 
             let triggered = false;
@@ -170,12 +210,17 @@ export default function App() {
     });
   };
 
-  // Check alerts whenever stocks update or alerts change
+  // Check alerts at intervals (not on every WebSocket tick to avoid constant re-renders)
   useEffect(() => {
-    if (alerts.length > 0) {
-        checkAlerts();
-    }
-  }, [allStocks, alerts.length]); // In a real app with live data, add a timer or socket dependency
+    if (alerts.length === 0) return;
+
+    // Check immediately on mount or when alerts change
+    checkAlerts();
+
+    // Then check every 10 seconds
+    const interval = setInterval(checkAlerts, 10000);
+    return () => clearInterval(interval);
+  }, [alerts.length]); // Only re-run when alerts are added/removed
 
   // --- App Logic ---
 
@@ -283,8 +328,17 @@ export default function App() {
               </div>
               
               <div className="flex items-center gap-3">
+                {/* Settings Button */}
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="bg-gray-900 p-3 rounded-full border border-gray-800 shadow-lg hover:bg-gray-800 hover:border-gray-700 transition-all group"
+                  title="Settings"
+                >
+                  <Settings className="w-5 h-5 text-gray-400 group-hover:text-blue-400" />
+                </button>
+
                 {/* Alerts Button */}
-                <button 
+                <button
                   onClick={() => setIsAlertsPanelOpen(true)}
                   className="relative bg-gray-900 p-3 rounded-full border border-gray-800 shadow-lg hover:bg-gray-800 hover:border-gray-700 transition-all group"
                 >
@@ -296,6 +350,17 @@ export default function App() {
 
                 {/* Refresh Controls */}
                 <div className="flex items-center gap-2 bg-gray-900 px-3 py-2 rounded-full border border-gray-800 shadow-lg">
+                  {/* WebSocket Status Indicator */}
+                  <div className="flex items-center gap-1.5 pr-2 border-r border-gray-700">
+                    <div className={`w-2 h-2 rounded-full ${
+                      wsState.connected ? 'bg-green-500 animate-pulse' : 
+                      wsState.connecting ? 'bg-yellow-500 animate-pulse' : 'bg-gray-600'
+                    }`}></div>
+                    <span className="text-xs font-medium text-gray-400">
+                      {wsState.connected ? 'Live' : wsState.connecting ? 'Connecting...' : 'Offline'}
+                    </span>
+                  </div>
+
                   <button
                     onClick={() => manualRefresh()}
                     disabled={finnhubState.isRefreshing}
@@ -695,6 +760,16 @@ export default function App() {
 
         {/* Global Chat Bot */}
         <ChatBot />
+
+        {/* Settings Modal */}
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          onApiKeyChange={() => {
+            // Trigger a refresh after API key changes
+            manualRefresh();
+          }}
+        />
       </div>
     </ErrorBoundary>
   );
