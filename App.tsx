@@ -32,7 +32,7 @@ import { CategoryPerformanceChart } from './components/CategoryPerformanceChart'
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AlertsPanel } from './components/AlertsPanel';
 import { AlertSetupModal } from './components/AlertSetupModal';
-import { generateStockData } from './services/geminiService';
+import { generateStockData } from './services/claudeService';
 
 export default function App() {
   // Data State
@@ -241,7 +241,7 @@ export default function App() {
                   <Globe className="w-8 h-8 text-gray-700" />
                 </h1>
                 <p className="text-gray-400 text-lg max-w-2xl">
-                  Tracking your personal portfolio of the AI & Quantum ecosystem. Powered by Gemini 2.5 & 3 Pro.
+                  Tracking your personal portfolio of the AI & Quantum ecosystem. Powered by Claude.
                 </p>
               </div>
               
@@ -262,7 +262,7 @@ export default function App() {
                     <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
                     <div className="absolute inset-0 bg-emerald-500 rounded-full animate-ping opacity-20"></div>
                   </div>
-                  <span className="text-sm font-semibold text-gray-300">Live Data • Nov 2025</span>
+                  <span className="text-sm font-semibold text-gray-300">Live Data • {new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
                 </div>
               </div>
             </div>
@@ -442,7 +442,7 @@ export default function App() {
                                       <>
                                           <Loader2 className="w-10 h-10 text-blue-400 animate-spin mb-4" />
                                           <h3 className="text-lg font-bold text-white mb-2">Analyzing {searchTerm.toUpperCase()}</h3>
-                                          <p className="text-xs text-gray-400">Consulting Gemini Search & Reasoning...</p>
+                                          <p className="text-xs text-gray-400">Consulting Claude...</p>
                                       </>
                                   ) : (
                                       <>
@@ -484,7 +484,7 @@ export default function App() {
                                   {isAddingStock ? (
                                       <>
                                           <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
-                                          <span className="text-gray-300 font-medium">Analyzing {searchTerm.toUpperCase()} via Gemini...</span>
+                                          <span className="text-gray-300 font-medium">Analyzing {searchTerm.toUpperCase()} via Claude...</span>
                                       </>
                                   ) : (
                                       <>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowUpRight, ArrowDownRight, Cpu, AlertTriangle, BarChart3, CheckCircle2, Circle, ShieldCheck, AlertOctagon, Zap, Box } from 'lucide-react';
 import { Stock } from '../types';
-import { getQuickSummary } from '../services/geminiService';
+import { getQuickSummary } from '../services/claudeService';
 
 interface StockRowProps {
   stock: Stock;

@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { ArrowUpRight, ArrowDownRight, Cpu, AlertTriangle, BarChart3, Box, Zap, CheckCircle2, Circle, ShieldCheck, AlertOctagon, Bell, BrainCircuit, X } from 'lucide-react';
 import { Stock } from '../types';
-import { getQuickSummary, analyzeStrategicRisk } from '../services/geminiService';
+import { getQuickSummary, analyzeStrategicRisk } from '../services/claudeService';
 
 interface StockCardProps {
   stock: Stock;

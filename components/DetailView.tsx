@@ -7,7 +7,7 @@ import {
     Activity, Gauge, ArrowRight, Layers, Bell
 } from 'lucide-react';
 import { Stock, SearchResult, IntelligenceMetrics } from '../types';
-import { analyzeStrategicRisk, getRecentSupplyChainNews, getStockIntelligence } from '../services/geminiService';
+import { analyzeStrategicRisk, getRecentSupplyChainNews, getStockIntelligence } from '../services/claudeService';
 
 interface DetailViewProps {
   stock: Stock;
@@ -239,7 +239,7 @@ export const DetailView: React.FC<DetailViewProps> = ({ stock, onClose, onSetAle
                      <div className="bg-purple-900/10 border border-purple-500/20 rounded-xl p-4 mb-4">
                         <div className="flex items-center gap-2 text-purple-300 mb-2">
                             <BrainCircuit className="w-5 h-5" />
-                            <h3 className="font-semibold">Gemini 3 Pro Reasoning</h3>
+                            <h3 className="font-semibold">Claude Deep Analysis</h3>
                         </div>
                         <p className="text-xs text-purple-200/70">
                             This analysis uses high-budget thinking tokens to reason through complex geopolitical and technical risks.

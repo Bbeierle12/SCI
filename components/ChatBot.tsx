@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react';
 import { ChatMessage } from '../types';
-import { sendChatMessage } from '../services/geminiService';
+import { sendChatMessage } from '../services/claudeService';
 
 export const ChatBot: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -55,8 +55,8 @@ export const ChatBot: React.FC = () => {
                <Sparkles className="w-4 h-4 text-blue-400" />
              </div>
              <div>
-               <h3 className="font-bold text-white text-sm">Gemini Analyst</h3>
-               <p className="text-[10px] text-gray-400">Powered by gemini-3-pro</p>
+               <h3 className="font-bold text-white text-sm">Claude Analyst</h3>
+               <p className="text-[10px] text-gray-400">Powered by Claude CLI</p>
              </div>
           </div>
           <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-white">
