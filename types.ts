@@ -156,3 +156,184 @@ export interface QuoteTick {
   p: number;  // price
   v?: number; // volume
 }
+
+// ===== CANVAS TYPES =====
+
+export interface Board {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  viewport: Viewport;
+}
+
+export interface Viewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export type CanvasNodeType = 'ticker' | 'event' | 'note' | 'callout';
+
+export interface CanvasNode {
+  id: string;
+  boardId: string;
+  type: CanvasNodeType;
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  data: TickerNodeData | EventNodeData | NoteNodeData | CalloutNodeData;
+  zIndex: number;
+  locked: boolean;
+}
+
+export interface TickerNodeData {
+  symbol: string;
+  name: string;
+  price?: number;
+  change?: number;
+  category?: string;
+  role?: string;
+  overlaySettings?: OverlaySettings;
+}
+
+export interface EventNodeData {
+  eventType: 'earnings' | 'news' | 'filing' | 'split' | 'dividend' | 'macro';
+  title: string;
+  description?: string;
+  timestamp: number;
+  symbol?: string;
+  source?: string;
+  url?: string;
+}
+
+export interface NoteNodeData {
+  title: string;
+  text: string;
+  color?: string;
+  citations?: Citation[];
+}
+
+export interface CalloutNodeData {
+  title: string;
+  text: string;
+  alertType: 'anomaly' | 'gap' | 'spike' | 'correlation';
+  severity: 'low' | 'medium' | 'high';
+  timestamp: number;
+  symbol?: string;
+}
+
+export interface Citation {
+  type: 'event' | 'price' | 'overlay';
+  timestamp: number;
+  description: string;
+}
+
+export interface Edge {
+  id: string;
+  boardId: string;
+  sourceId: string;
+  targetId: string;
+  type: 'relation' | 'supply-chain' | 'correlation' | 'custom';
+  label?: string;
+  color?: string;
+}
+
+export interface NodeGroup {
+  id: string;
+  boardId: string;
+  name: string;
+  nodeIds: string[];
+  color: string;
+  collapsed: boolean;
+  position?: { x: number; y: number };
+}
+
+// ===== TIMESERIES TYPES =====
+
+export type CandleResolution = '1' | '5' | '15' | '30' | '60' | 'D' | 'W' | 'M';
+
+export interface TimeseriesBar {
+  symbol: string;
+  resolution: CandleResolution;
+  timestamp: number;  // Unix epoch seconds
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface CandleData {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+// ===== OVERLAY TYPES =====
+
+export interface OverlaySettings {
+  enabledOverlays: string[];
+  overlayConfigs: Record<string, OverlayConfig>;
+}
+
+export interface OverlayConfig {
+  id: string;
+  enabled: boolean;
+  inputs: Record<string, unknown>;
+}
+
+export interface OverlayCacheEntry {
+  symbol: string;
+  overlayId: string;
+  resolution: CandleResolution;
+  windowStart: number;
+  windowEnd: number;
+  data: unknown;
+  computedAt: number;
+  version: number;
+}
+
+// ===== AGENT TYPES =====
+
+export type AgentType = 'ingestion' | 'enrichment' | 'overlay-compute' | 'anomaly' | 'narrative' | 'curator';
+export type AgentStatus = 'idle' | 'running' | 'completed' | 'failed';
+
+export interface AgentRun {
+  id: string;
+  agentType: AgentType;
+  status: AgentStatus;
+  startedAt: number;
+  completedAt?: number;
+  error?: string;
+  artifacts?: AgentArtifact[];
+  trace?: AgentTraceEntry[];
+}
+
+export interface AgentArtifact {
+  type: 'node' | 'edge' | 'overlay' | 'alert';
+  id: string;
+  data: unknown;
+}
+
+export interface AgentTraceEntry {
+  timestamp: number;
+  action: string;
+  details?: unknown;
+}
+
+// ===== CANVAS EVENT TYPES =====
+
+export interface CanvasEvent {
+  id: string;
+  symbol?: string;
+  timestamp: number;
+  type: EventNodeData['eventType'];
+  title: string;
+  description?: string;
+  source?: string;
+  url?: string;
+  processed: boolean;
+}

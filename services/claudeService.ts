@@ -1,22 +1,5 @@
 import { SearchResult, ChatMessage, Stock, IntelligenceMetrics } from "../types";
-
-// TypeScript declaration for the electron API exposed via preload
-declare global {
-  interface Window {
-    electron: {
-      platform: string;
-      versions: {
-        node: string;
-        chrome: string;
-        electron: string;
-      };
-      claude: {
-        query: (prompt: string, options?: ClaudeOptions) => Promise<ClaudeResponse>;
-        isAvailable: () => Promise<boolean>;
-      };
-    };
-  }
-}
+import { apiGet, apiPost } from "./apiClient";
 
 interface ClaudeOptions {
   systemPrompt?: string;
@@ -29,10 +12,10 @@ interface ClaudeResponse {
   error?: string;
 }
 
-// Helper to call Claude CLI
+// Helper to call Claude CLI via backend
 async function callClaude(prompt: string, options?: ClaudeOptions): Promise<string> {
   try {
-    const response = await window.electron.claude.query(prompt, options);
+    const response = await apiPost<ClaudeResponse>('/api/claude/query', { prompt, options });
     if (response.success && response.data) {
       return response.data;
     }
@@ -46,7 +29,7 @@ async function callClaude(prompt: string, options?: ClaudeOptions): Promise<stri
 // Check if Claude is available
 export const isClaudeAvailable = async (): Promise<boolean> => {
   try {
-    return await window.electron.claude.isAvailable();
+    return await apiGet<boolean>('/api/claude/available');
   } catch {
     return false;
   }
@@ -57,7 +40,7 @@ export const getQuickSummary = async (stockName: string, role: string): Promise<
   try {
     const response = await callClaude(
       `Provide a one-sentence, high-impact summary of why ${stockName} is critical to Apple's supply chain as a ${role}. Keep it under 20 words.`,
-      { 
+      {
         systemPrompt: "You are a concise financial analyst. Give extremely brief responses.",
         noTools: true
       }
@@ -73,12 +56,12 @@ export const getQuickSummary = async (stockName: string, role: string): Promise<
 export const analyzeStrategicRisk = async (stockName: string): Promise<string> => {
   try {
     const response = await callClaude(
-      `Conduct a strategic risk and opportunity analysis for ${stockName} specifically regarding its relationship with Apple. 
+      `Conduct a strategic risk and opportunity analysis for ${stockName} specifically regarding its relationship with Apple.
       Consider:
       1. Geopolitical risks (if any).
       2. Technology displacement risks (e.g., Apple designing its own chips).
       3. Growth opportunities in the next 5 years.
-      
+
       Format the output in clean Markdown. Be concise but insightful.`,
       {
         systemPrompt: "You are an expert financial analyst specializing in technology supply chains and Apple's ecosystem.",
@@ -102,9 +85,9 @@ export const getRecentSupplyChainNews = async (stockName: string): Promise<Searc
         noTools: true
       }
     );
-    
-    return { 
-      text: response || "No analysis available.", 
+
+    return {
+      text: response || "No analysis available.",
       sources: [] // No live sources without web search
     };
   } catch (error) {
@@ -121,12 +104,12 @@ export const sendChatMessage = async (message: string, history: ChatMessage[]): 
     const contextPrompt = recentHistory.length > 0
       ? `Previous conversation:\n${recentHistory.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n')}\n\nUser: ${message}`
       : message;
-    
+
     const response = await callClaude(contextPrompt, {
       systemPrompt: "You are an expert financial analyst specializing in the Apple Supply Chain ecosystem. You are concise, professional, and data-driven. Answer questions about stocks, supply chains, and technology investments.",
       noTools: true
     });
-    
+
     return response || "I couldn't generate a response.";
   } catch (error) {
     console.error("Chat Error:", error);
@@ -139,7 +122,7 @@ export const generateStockData = async (ticker: string): Promise<Stock | null> =
   try {
     const response = await callClaude(
       `I need analysis for the public stock ticker: ${ticker.toUpperCase()}.
-      
+
       Based on your knowledge:
       1. Provide its approximate current price (use most recent known data), typical percent change, market cap, and region.
       2. Determine its 'role' in the global technology or supply chain ecosystem (short string, 2-4 words).
@@ -147,7 +130,7 @@ export const generateStockData = async (ticker: string): Promise<Stock | null> =
       4. Categorize it into EXACTLY ONE of these categories: "AI & Compute", "Quantum", "Strategic Materials", "Metals & Mining", "Semi Equip", "Battery & Power", "Components", "Manufacturing", "Other".
       5. Assess its risk level (Low/Medium/High/Extreme) and Growth Potential (percentage string like "+15%").
       6. Add relevant tags from: "Apple Direct", "US Reshoring", "Chips", "Data Center", "Geopolitical Risk", "Turnaround", "IP Licensing", "Connectivity", "Penny Stock"
-      
+
       Output ONLY a valid JSON object (no markdown, no explanation) matching this exact structure:
       {"ticker": "${ticker.toUpperCase()}", "name": "Company Name", "price": 123.45, "change": 1.23, "category": "Category Name", "role": "Short Role", "description": "Description...", "marketCap": "100B", "risk": "Medium", "growthPotential": "+10%", "region": "US", "tags": ["Tag1", "Tag2"]}`,
       {
@@ -158,7 +141,7 @@ export const generateStockData = async (ticker: string): Promise<Stock | null> =
 
     // Try to extract JSON from response
     let jsonString = response.trim();
-    
+
     // If wrapped in code blocks, extract
     const jsonMatch = jsonString.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || jsonString.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
@@ -191,10 +174,10 @@ export const getStockIntelligence = async (ticker: string): Promise<Intelligence
   try {
     const response = await callClaude(
       `Analyze the stock ${ticker} and provide intelligence metrics based on recent performance.
-      
+
       Output ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
       {"sentimentScore": 75, "sentimentTrend": "Bullish", "supplyChainHealth": 80, "innovationIndex": 70, "technicalSupport": "$150", "technicalResistance": "$180"}
-      
+
       - sentimentScore: 0-100 number
       - sentimentTrend: exactly one of "Bullish", "Bearish", or "Neutral"
       - supplyChainHealth: 0-100 number

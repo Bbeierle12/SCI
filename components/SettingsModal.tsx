@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Key, Eye, EyeOff, CheckCircle2, AlertTriangle, ExternalLink, Loader2 } from 'lucide-react';
+import { apiGet, apiPost, apiDelete } from '../services/apiClient';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -7,11 +8,10 @@ interface SettingsModalProps {
   onApiKeyChange?: () => void;
 }
 
-// Access the config API from window.electron
-const getConfigAPI = () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (window as any).electron?.config;
-};
+interface KeyStatus {
+  hasKey: boolean;
+  maskedKey: string;
+}
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onApiKeyChange }) => {
   const [apiKey, setApiKey] = useState('');
@@ -30,11 +30,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   }, [isOpen]);
 
   const loadKeyStatus = async () => {
-    const api = getConfigAPI();
-    if (!api) return;
-
     try {
-      const result = await api.getFinnhubKey();
+      const result = await apiGet<KeyStatus>('/api/config/finnhub-key');
       setHasExistingKey(result.hasKey);
       setMaskedKey(result.maskedKey);
     } catch (e) {
@@ -45,19 +42,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const handleSave = async () => {
     if (!apiKey.trim()) return;
 
-    const api = getConfigAPI();
-    if (!api) {
-      setErrorMessage('Config API not available');
-      setSaveStatus('error');
-      return;
-    }
-
     setIsSaving(true);
     setSaveStatus('idle');
     setErrorMessage('');
 
     try {
-      const result = await api.setFinnhubKey(apiKey.trim());
+      const result = await apiPost<{ success: boolean; error?: string }>('/api/config/finnhub-key', {
+        apiKey: apiKey.trim()
+      });
       if (result.success) {
         setSaveStatus('success');
         setApiKey('');
@@ -81,11 +73,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   };
 
   const handleClear = async () => {
-    const api = getConfigAPI();
-    if (!api) return;
-
     try {
-      await api.clearFinnhubKey();
+      await apiDelete('/api/config/finnhub-key');
       setHasExistingKey(false);
       setMaskedKey('');
       onApiKeyChange?.();

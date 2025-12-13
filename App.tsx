@@ -21,7 +21,8 @@ import {
   RefreshCw,
   Pause,
   Play,
-  Settings
+  Settings,
+  Map
 } from 'lucide-react';
 import { Stock, AlertConfig, AppNotification } from './types';
 import { STOCK_DATA, PRIVATE_DATA } from './constants';
@@ -40,6 +41,7 @@ import { generateStockData } from './services/claudeService';
 import { useFinnhubRefresh } from './hooks/useFinnhubRefresh';
 import { useFinnhubWebSocket } from './hooks/useFinnhubWebSocket';
 import { SettingsModal } from './components/SettingsModal';
+import { CanvasApp } from './canvas/CanvasApp';
 
 export default function App() {
   // Data State
@@ -62,7 +64,7 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   
   // Feature State
-  const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'list' | 'canvas'>('canvas');
   const [compareList, setCompareList] = useState<string[]>([]);
   const [isComparing, setIsComparing] = useState(false);
   
@@ -496,14 +498,21 @@ export default function App() {
               <div className="flex items-center gap-3 w-full xl:w-auto">
                   {/* Layout Toggles */}
                   <div className="flex items-center gap-1 bg-gray-950 p-1 rounded-lg border border-gray-800 shrink-0">
-                      <button 
+                      <button
+                          onClick={() => setLayoutMode('canvas')}
+                          className={`p-1.5 rounded-md transition-colors ${layoutMode === 'canvas' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                          title="Canvas View"
+                      >
+                          <Map className="w-4 h-4" />
+                      </button>
+                      <button
                           onClick={() => setLayoutMode('grid')}
                           className={`p-1.5 rounded-md transition-colors ${layoutMode === 'grid' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}
                           title="Grid View"
                       >
                           <LayoutGrid className="w-4 h-4" />
                       </button>
-                      <button 
+                      <button
                           onClick={() => setLayoutMode('list')}
                           className={`p-1.5 rounded-md transition-colors ${layoutMode === 'list' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}
                           title="List View"
@@ -540,9 +549,16 @@ export default function App() {
             </div>
           </header>
 
-          {/* Main Grid */}
+          {/* Main Content */}
+          {layoutMode === 'canvas' ? (
+            /* Canvas View - Full screen infinite canvas */
+            <section className="relative -mx-4 md:-mx-8 -mb-24" style={{ height: 'calc(100vh - 280px)' }}>
+              <CanvasApp stocks={allStocks} />
+            </section>
+          ) : (
+          /* Traditional Grid/List Views */
           <div className="space-y-12">
-            
+
             {/* Public Companies / Watchlist Grid */}
             <section>
               <div className="flex items-center justify-between mb-6">
@@ -554,7 +570,7 @@ export default function App() {
                   <span className="text-sm font-medium bg-gray-800 text-gray-400 px-2 py-0.5 rounded-md ml-2">{filteredStocks.length}</span>
                 </div>
               </div>
-              
+
               {/* LIST vs GRID RENDERER */}
               {layoutMode === 'grid' ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -679,6 +695,7 @@ export default function App() {
             )}
 
           </div>
+          )}
 
         </div>
 

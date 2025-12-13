@@ -1,54 +1,30 @@
 import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import electron from 'vite-plugin-electron/simple';
 
-export default defineConfig(({ mode }) => {
-    const isDev = mode === 'development';
-    
-    return {
-      server: {
-        port: 3001,
-        host: '0.0.0.0',
+export default defineConfig({
+  server: {
+    port: 5173,
+    host: '0.0.0.0',
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
       },
-      plugins: [
-        react(),
-        electron({
-          main: {
-            // Main process entry file
-            entry: 'electron/main.js',
-            vite: {
-              build: {
-                rollupOptions: {
-                  external: ['electron'],
-                },
-              },
-              define: {
-                'process.env.VITE_DEV_SERVER_URL': isDev ? JSON.stringify('http://localhost:3001') : undefined,
-              },
-            },
-          },
-          preload: {
-            // Preload script
-            input: 'electron/preload.js',
-          },
-          // Enable hot reload for Electron
-          renderer: isDev ? {} : undefined,
-        }),
-      ],
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, '.'),
-        }
+      '/ws': {
+        target: 'ws://localhost:3000',
+        ws: true,
       },
-      // Electron requires base to be './' for file protocol
-      base: './',
-      build: {
-        outDir: 'dist',
-        emptyOutDir: true,
-        rollupOptions: {
-          external: ['electron']
-        }
-      }
-    };
+    },
+  },
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, '.'),
+    },
+  },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+  },
 });
